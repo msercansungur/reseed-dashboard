@@ -1,0 +1,9 @@
+cat > ~/Documents/reseed_pipeline/requirements.txt << 'EOF'
+streamlit
+pandas
+numpy
+plotly
+openpyxl
+scikit-learn
+statsmodels
+EOF
