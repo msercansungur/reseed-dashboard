@@ -163,6 +163,16 @@ def get(df, col):
     c = df[col]
     return c.iloc[:,0] if isinstance(c, pd.DataFrame) else c
 
+def get_service_flag(df, keyword):
+    """T7-primary, P2-fallback service detection"""
+    t7 = get(df, 'T7').astype(str).fillna('')
+    p2 = get(df, 'P2').astype(str).fillna('')
+    primary = t7.where(
+        ~t7.str.contains('not received|have not received', case=False, na=False),
+        p2
+    )
+    return primary.str.contains(keyword, case=False, na=False)
+
 def pct(df, col, val):
     s = get(df, col)
     base = s.notna().sum()
@@ -346,7 +356,8 @@ with st.sidebar:
 
     # Service received filter
     sel_service = st.selectbox("Service received", [
-        "All", "Vocational training", "Language course", "Advisory support"
+        "All", "Vocational training", "Language course", "Advisory support",
+        "Formalisation support"
     ])
 
     st.markdown("---")
@@ -369,11 +380,13 @@ elif sel_emp == "Not employed":
 if sel_children != "All":
     df = df[get(df, 'C1') == sel_children]
 if sel_service == "Vocational training":
-    df = df[get(df, 'P2').astype(str).str.contains('Vocational', na=False)]
+    df = df[get_service_flag(df, 'Vocational')]
 elif sel_service == "Language course":
-    df = df[get(df, 'P2').astype(str).str.contains('language course', case=False, na=False)]
+    df = df[get_service_flag(df, 'language course')]
 elif sel_service == "Advisory support":
-    df = df[get(df, 'P2').astype(str).str.contains('Legal', na=False)]
+    df = df[get_service_flag(df, 'Legal')]
+elif sel_service == "Formalisation support":
+    df = df[get_service_flag(df, 'Formalisation')]
 
 N = len(df)
 
@@ -460,12 +473,12 @@ if page == "📊 Overview & KPIs":
                         use_container_width=True)
     with col5:
         # Services received breakdown
-        p2 = get(df, 'P2').astype(str)
         services = {
-            'Vocational training': p2.str.contains('Vocational', na=False).sum(),
-            'Language course':     p2.str.contains('language course', case=False, na=False).sum(),
-            'Advisory support':    p2.str.contains('Legal', na=False).sum(),
-            'Soft skills':         p2.str.contains('soft skills', case=False, na=False).sum(),
+            'Vocational training': get_service_flag(df, 'Vocational').sum(),
+            'Language course':     get_service_flag(df, 'language course').sum(),
+            'Advisory support':    get_service_flag(df, 'Legal').sum(),
+            'Soft skills':         get_service_flag(df, 'soft skills').sum(),
+            'Formalisation':       get_service_flag(df, 'Formalisation').sum(),
         }
         svc_df = pd.DataFrame({'Service': list(services.keys()), 'Count': list(services.values())})
         svc_df['Percent'] = (svc_df['Count'] / N * 100).round(1)
@@ -616,9 +629,8 @@ elif page == "🎓 Services & Training":
     st.markdown('<div class="page-subtitle">Quality and impact of vocational training, language courses, and advisory support</div>', unsafe_allow_html=True)
 
     # Service subsamples
-    p2 = get(df,'P2').astype(str)
-    voc_df = df[p2.str.contains('Vocational', na=False)]
-    adv_df = df[p2.str.contains('Legal', na=False)]
+    voc_df = df[get_service_flag(df, 'Vocational')]
+    adv_df = df[get_service_flag(df, 'Legal')]
 
     # KPIs
     voc_n   = len(voc_df)
@@ -693,10 +705,14 @@ elif page == "🎓 Services & Training":
 
     with tab3:
         st.markdown("**Employment rate by service received:**")
+        any_service = (get_service_flag(df, 'Vocational') |
+                       get_service_flag(df, 'Legal') |
+                       get_service_flag(df, 'language course'))
         svc_emp = {
-            'Vocational training': pct(df[p2.str.contains('Vocational',na=False)], 'F1', 'Yes'),
-            'Advisory support':    pct(df[p2.str.contains('Legal',na=False)], 'F1', 'Yes'),
-            'No services':         pct(df[~p2.str.contains('Vocational|Legal|language',na=False,case=False)], 'F1', 'Yes'),
+            'Vocational training': pct(df[get_service_flag(df, 'Vocational')], 'F1', 'Yes'),
+            'Advisory support':    pct(df[get_service_flag(df, 'Legal')], 'F1', 'Yes'),
+            'Formalisation':       pct(df[get_service_flag(df, 'Formalisation')], 'F1', 'Yes'),
+            'No services':         pct(df[~any_service], 'F1', 'Yes'),
         }
         svc_df2 = pd.DataFrame({'Service':list(svc_emp.keys()), 'Employment Rate (%)':list(svc_emp.values())})
         fig = px.bar(svc_df2, x='Service', y='Employment Rate (%)',
